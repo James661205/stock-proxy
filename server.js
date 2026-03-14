@@ -193,6 +193,26 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok:false, error:e.message }));
     }
 
+  } else if (path === '/yahoo' && req.method === 'GET') {
+    // Yahoo Finance API 轉發（解決 Safari CORS 問題）
+    const targetUrl = parsed.query.url || '';
+    if (!targetUrl || !targetUrl.includes('yahoo.com')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid url' }));
+      return;
+    }
+    try {
+      const r = await fetchUrl(targetUrl);
+      res.writeHead(r.status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        ...CORS
+      });
+      res.end(r.body);
+    } catch(e) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+
   } else if (path === '/health') {
     res.writeHead(200, { 'Content-Type':'application/json' });
     res.end(JSON.stringify({ ok:true, time:new Date().toISOString() }));
