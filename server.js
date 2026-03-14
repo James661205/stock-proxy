@@ -1,7 +1,7 @@
 /**
  * 股市儀表板雲端 Proxy Server
- * 全部新聞來源：Google News RSS 繁體中文版
- * 涵蓋台股、美股、國際、總經
+ * 完全免費，不需要任何 API Key
+ * 新聞來源：Google News RSS 繁體中文
  */
 
 const http   = require('http');
@@ -17,39 +17,17 @@ const CORS = {
   'Access-Control-Max-Age': '86400'
 };
 
-// 全部使用 Google News RSS 繁體中文（hl=zh-TW&gl=TW）
-const NEWS_SOURCES = [
-  // 台股
-  { label:'tw_stock',
-    tags:['tw'],
-    url:'https://news.google.com/rss/search?q=%E5%8F%B0%E8%82%A1+%E8%82%A1%E5%B8%82&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  { label:'tw_tsmc',
-    tags:['tw'],
-    url:'https://news.google.com/rss/search?q=%E5%8F%B0%E7%A9%8D%E9%9B%BB+%E9%9B%BB%E5%AD%90%E8%82%A1&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  { label:'tw_semi',
-    tags:['tw'],
-    url:'https://news.google.com/rss/search?q=%E5%8F%B0%E8%82%A1+%E5%8D%8A%E5%B0%8E%E9%AB%94+%E8%82%A1%E5%83%B9&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  // 美股
-  { label:'us_stock',
-    tags:['us'],
-    url:'https://news.google.com/rss/search?q=%E7%BE%8E%E8%82%A1+%E7%B4%8D%E6%96%AF%E9%81%94%E5%85%8B+%E8%82%A1%E5%B8%82&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  { label:'us_fed',
-    tags:['us','macro'],
-    url:'https://news.google.com/rss/search?q=%E7%BE%8E%E8%81%AF%E6%BA%96+%E5%88%A9%E7%8E%87+%E9%81%93%E7%93%8A&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  // 國際財經
-  { label:'global',
-    tags:['global'],
-    url:'https://news.google.com/rss/search?q=%E5%9C%8B%E9%9A%9B+%E8%82%A1%E5%B8%82+%E9%87%91%E8%9E%8D&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  { label:'global_oil',
-    tags:['global','macro'],
-    url:'https://news.google.com/rss/search?q=%E6%B2%B9%E5%83%B9+%E5%8E%9F%E6%B2%B9+%E9%87%91%E5%83%B9+%E6%8C%AF%E7%9B%AA&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  // 總經
-  { label:'macro_tw',
-    tags:['macro'],
-    url:'https://news.google.com/rss/search?q=%E9%80%9A%E8%B2%A8%E8%86%A8%E8%84%B9+%E7%B6%93%E6%BF%9F+%E5%8D%87%E6%81%AF&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
-  { label:'macro_trade',
-    tags:['macro'],
-    url:'https://news.google.com/rss/search?q=%E8%B2%BF%E6%98%93%E6%88%B0+%E9%97%9C%E7%A8%85+%E7%B8%BD%E7%B5%8C&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+// 市場新聞來源
+const MARKET_NEWS_SOURCES = [
+  { label:'tw_stock',  tags:['tw'],           url:'https://news.google.com/rss/search?q=%E5%8F%B0%E8%82%A1+%E8%82%A1%E5%B8%82&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'tw_tsmc',   tags:['tw'],           url:'https://news.google.com/rss/search?q=%E5%8F%B0%E7%A9%8D%E9%9B%BB+%E9%9B%BB%E5%AD%90%E8%82%A1&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'tw_semi',   tags:['tw'],           url:'https://news.google.com/rss/search?q=%E5%8F%B0%E8%82%A1+%E5%8D%8A%E5%B0%8E%E9%AB%94+%E8%82%A1%E5%83%B9&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'us_stock',  tags:['us'],           url:'https://news.google.com/rss/search?q=%E7%BE%8E%E8%82%A1+%E7%B4%8D%E6%96%AF%E9%81%94%E5%85%8B+%E8%82%A1%E5%B8%82&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'us_fed',    tags:['us','macro'],   url:'https://news.google.com/rss/search?q=%E7%BE%8E%E8%81%AF%E6%BA%96+%E5%88%A9%E7%8E%87+%E9%81%93%E7%93%8A&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'global',    tags:['global'],       url:'https://news.google.com/rss/search?q=%E5%9C%8B%E9%9A%9B+%E8%82%A1%E5%B8%82+%E9%87%91%E8%9E%8D&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'global_oil',tags:['global','macro'],url:'https://news.google.com/rss/search?q=%E6%B2%B9%E5%83%B9+%E5%8E%9F%E6%B2%B9+%E9%87%91%E5%83%B9&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'macro',     tags:['macro'],        url:'https://news.google.com/rss/search?q=%E9%80%9A%E8%B2%A8%E8%86%A8%E8%84%B9+%E7%B6%93%E6%BF%9F+%E5%8D%87%E6%81%AF&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
+  { label:'macro_trade',tags:['macro'],       url:'https://news.google.com/rss/search?q=%E8%B2%BF%E6%98%93%E6%88%B0+%E9%97%9C%E7%A8%85+%E7%B8%BD%E7%B5%8C&hl=zh-TW&gl=TW&ceid=TW:zh-Hant' },
 ];
 
 function fetchUrl(targetUrl, redirectCount) {
@@ -81,16 +59,16 @@ function fetchUrl(targetUrl, redirectCount) {
 
 function decodeHtml(str) {
   return str
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ').replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)));
+    .replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')
+    .replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&apos;/g,"'")
+    .replace(/&nbsp;/g,' ').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(parseInt(n)));
 }
 
 function getTag(xml, tag) {
   const val = (
     xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`))?.[1] ||
     xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || ''
-  ).replace(/<[^>]+>/g, '').trim();
+  ).replace(/<[^>]+>/g,'').trim();
   return decodeHtml(val);
 }
 
@@ -100,15 +78,13 @@ function parseRSS(xml, source) {
   let m;
   while ((m = re.exec(xml)) !== null) {
     const raw     = m[1];
-    const title   = getTag(raw, 'title');
-    const desc    = getTag(raw, 'description') || getTag(raw, 'summary');
-    const pubDate = getTag(raw, 'pubDate') || getTag(raw, 'dc:date');
-    const link    = getTag(raw, 'link') ||
+    const title   = getTag(raw,'title');
+    const desc    = getTag(raw,'description') || getTag(raw,'summary');
+    const pubDate = getTag(raw,'pubDate') || getTag(raw,'dc:date');
+    const link    = getTag(raw,'link') ||
                     raw.match(/<link[^>]*>\s*(https?:\/\/[^\s<]+)/)?.[1] || '';
-    // 過濾掉太短或明顯是垃圾的標題
-    if (title && title.length > 4) {
+    if (title && title.length > 4)
       items.push({ title, description: desc, pubDate, link, source });
-    }
   }
   return items;
 }
@@ -121,96 +97,106 @@ function relTime(pubDate) {
     if (mins < 60) return `${mins} 分鐘前`;
     const h = Math.floor(mins / 60);
     if (h < 24)    return `${h} 小時前`;
-    return `${Math.floor(h / 24)} 天前`;
+    return `${Math.floor(h/24)} 天前`;
   } catch { return ''; }
 }
 
-// 從 Google News 的 source 標籤取得媒體名稱
-function getMediaSource(xml) {
-  return xml.match(/<source[^>]*>([^<]+)<\/source>/)?.[1]?.trim() || 'Google 新聞';
-}
-
-async function fetchAllNews() {
-  const results = await Promise.allSettled(
-    NEWS_SOURCES.map(s => fetchUrl(s.url).then(r => ({ ...r, source: s })))
-  );
-
-  let all = [];
-  results.forEach((r, i) => {
-    const label = NEWS_SOURCES[i].label;
-    if (r.status === 'fulfilled' && r.value.status === 200) {
-      const items = parseRSS(r.value.body, r.value.source);
-      console.log(`  [${label}] ${items.length} 則`);
-      all = all.concat(items);
-    } else {
-      console.warn(`  [${label}] 失敗:`, r.reason?.message || `HTTP ${r.value?.status}`);
-    }
-  });
-
-  // 去重（標題前 20 字）
-  const seen = new Set();
-  const unique = all.filter(item => {
-    const k = item.title.slice(0, 20);
-    if (seen.has(k)) return false;
-    seen.add(k); return true;
-  });
-
-  // 依時間排序（新的在前）
-  unique.sort((a, b) => {
-    const ta = a.pubDate ? new Date(a.pubDate).getTime() : 0;
-    const tb = b.pubDate ? new Date(b.pubDate).getTime() : 0;
-    return tb - ta;
-  });
-
-  return unique.slice(0, 60).map(item => ({
-    headline:  item.title.slice(0, 80),
-    summary:   (item.description || item.title).slice(0, 150),
-    source:    'Google 新聞',
-    time:      relTime(item.pubDate),
-    pubDate:   item.pubDate,
-    link:      item.link,
-    tags:      item.source.tags,
-    sentiment: 'neu'
-  }));
-}
-
-// 快取 5 分鐘
-let newsCache = null;
-let cacheTime = 0;
+// 市場新聞（快取5分鐘）
+let marketCache = null, marketCacheTime = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
-async function getCachedNews() {
-  if (newsCache && Date.now() - cacheTime < CACHE_TTL) return newsCache;
-  console.log(`\n[${new Date().toLocaleTimeString()}] 更新新聞快取...`);
-  newsCache = await fetchAllNews();
-  cacheTime = Date.now();
-  const tw    = newsCache.filter(n => n.tags.includes('tw')).length;
-  const us    = newsCache.filter(n => n.tags.includes('us')).length;
-  const gl    = newsCache.filter(n => n.tags.includes('global')).length;
-  const macro = newsCache.filter(n => n.tags.includes('macro')).length;
-  console.log(`  完成：共 ${newsCache.length} 則 (台股:${tw} 美股:${us} 國際:${gl} 總經:${macro})\n`);
-  return newsCache;
+async function fetchMarketNews() {
+  if (marketCache && Date.now() - marketCacheTime < CACHE_TTL) return marketCache;
+  console.log(`[${new Date().toLocaleTimeString()}] 更新市場新聞...`);
+
+  const results = await Promise.allSettled(
+    MARKET_NEWS_SOURCES.map(s => fetchUrl(s.url).then(r => ({ ...r, source: s })))
+  );
+  let all = [];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value.status === 200)
+      all = all.concat(parseRSS(r.value.body, r.value.source));
+    else console.warn(`  [${MARKET_NEWS_SOURCES[i].label}] 失敗`);
+  });
+
+  const seen = new Set();
+  marketCache = all
+    .filter(item => { const k=item.title.slice(0,20); if(seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a,b) => (new Date(b.pubDate)||0)-(new Date(a.pubDate)||0))
+    .slice(0,60)
+    .map(item => ({
+      headline: item.title.slice(0,80),
+      summary:  (item.description||item.title).slice(0,150),
+      source:   'Google 新聞',
+      time:     relTime(item.pubDate),
+      pubDate:  item.pubDate,
+      link:     item.link,
+      tags:     item.source.tags,
+      sentiment:'neu'
+    }));
+  marketCacheTime = Date.now();
+  console.log(`  完成：${marketCache.length} 則`);
+  return marketCache;
 }
 
+// 個股相關新聞（依關鍵字搜尋，快取2分鐘）
+const stockNewsCache = {};
+async function fetchStockNews(query) {
+  const key = query.slice(0,20);
+  if (stockNewsCache[key] && Date.now() - stockNewsCache[key].time < 2*60*1000)
+    return stockNewsCache[key].news;
+
+  const encoded = encodeURIComponent(query + ' 股票 投資');
+  const url = `https://news.google.com/rss/search?q=${encoded}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+  try {
+    const r = await fetchUrl(url);
+    if (r.status !== 200) return [];
+    const items = parseRSS(r.body, { tags:['tw'] });
+    const news = items.slice(0,8).map(item => ({
+      headline: item.title.slice(0,80),
+      summary:  (item.description||item.title).slice(0,150),
+      source:   'Google 新聞',
+      time:     relTime(item.pubDate),
+      link:     item.link,
+    }));
+    stockNewsCache[key] = { news, time: Date.now() };
+    return news;
+  } catch { return []; }
+}
+
+// HTTP Server
 const server = http.createServer(async (req, res) => {
-  Object.entries(CORS).forEach(([k, v]) => res.setHeader(k, v));
+  Object.entries(CORS).forEach(([k,v]) => res.setHeader(k,v));
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  const path = urlMod.parse(req.url).pathname;
+  const parsed = urlMod.parse(req.url, true);
+  const path   = parsed.pathname;
 
   if (path === '/news' && req.method === 'GET') {
     try {
-      const news = await getCachedNews();
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: true, news, total: news.length, updated: new Date().toISOString() }));
-    } catch (e) {
-      console.error('[Error]', e.message);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
+      const news = await fetchMarketNews();
+      res.writeHead(200, { 'Content-Type':'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok:true, news, total:news.length, updated:new Date().toISOString() }));
+    } catch(e) {
+      res.writeHead(500, { 'Content-Type':'application/json' });
+      res.end(JSON.stringify({ ok:false, error:e.message }));
     }
+
+  } else if (path === '/stock-news' && req.method === 'GET') {
+    try {
+      const q    = parsed.query.q || '';
+      const news = await fetchStockNews(q);
+      res.writeHead(200, { 'Content-Type':'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok:true, news }));
+    } catch(e) {
+      res.writeHead(500, { 'Content-Type':'application/json' });
+      res.end(JSON.stringify({ ok:false, error:e.message }));
+    }
+
   } else if (path === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, time: new Date().toISOString() }));
+    res.writeHead(200, { 'Content-Type':'application/json' });
+    res.end(JSON.stringify({ ok:true, time:new Date().toISOString() }));
+
   } else {
     res.writeHead(404); res.end('Not found');
   }
@@ -218,6 +204,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n✅ Stock Proxy 已啟動 port ${PORT}`);
-  console.log(`   新聞語言: 繁體中文（Google News zh-TW）`);
-  console.log(`   分類: 台股 / 美股 / 國際 / 總經\n`);
+  console.log(`   完全免費，不需要任何 API Key`);
+  console.log(`   /news        市場新聞（繁體中文）`);
+  console.log(`   /stock-news  個股相關新聞\n`);
 });
