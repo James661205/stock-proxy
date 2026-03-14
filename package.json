@@ -1,0 +1,12 @@
+{
+  "name": "stock-dashboard-proxy",
+  "version": "1.0.0",
+  "description": "Stock dashboard news proxy for Render.com",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
