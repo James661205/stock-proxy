@@ -213,6 +213,18 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: e.message }));
     }
 
+  } else if (path === '/finmind' && req.method === 'GET') {
+    // FinMind API 轉發（解決 CORS 問題）
+    const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + require('url').parse(req.url).query;
+    try {
+      const r = await fetchUrl(targetUrl);
+      res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
+      res.end(r.body);
+    } catch(e) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 500, error: e.message }));
+    }
+
   } else if (path === '/health') {
     res.writeHead(200, { 'Content-Type':'application/json' });
     res.end(JSON.stringify({ ok:true, time:new Date().toISOString() }));
