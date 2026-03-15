@@ -10,6 +10,10 @@ const urlMod = require('url');
 
 const PORT = process.env.PORT || 3001;
 
+// FinMind 快取（server 端，所有使用者共用，減少 API 呼叫）
+const finmindCache = {};
+const FINMIND_TTL  = 3 * 60 * 1000; // 3 分鐘快取
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -214,16 +218,24 @@ const server = http.createServer(async (req, res) => {
     }
 
   } else if (path === '/finmind' && req.method === 'GET') {
-    // FinMind API 轉發（解決 CORS 問題）
-    const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + require('url').parse(req.url).query;
-    try {
-      const r = await fetchUrl(targetUrl);
-      res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
-      res.end(r.body);
-    } catch(e) {
-      res.writeHead(502, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 500, error: e.message }));
+    // FinMind API 轉發 + Server 端快取（3分鐘）
+    // 所有使用者共用同一份快取，大幅減少 API 呼叫次數
+    const cacheKey = parsed.query || '';
+    const now = Date.now();
+    if (!finmindCache[cacheKey] || now - finmindCache[cacheKey].time > FINMIND_TTL) {
+      const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + cacheKey;
+      try {
+        const r = await fetchUrl(targetUrl);
+        finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
+      } catch(e) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 500, error: e.message }));
+        return;
+      }
     }
+    const cached = finmindCache[cacheKey];
+    res.writeHead(cached.status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
+    res.end(cached.body);
 
   } else if (path === '/health') {
     res.writeHead(200, { 'Content-Type':'application/json' });
