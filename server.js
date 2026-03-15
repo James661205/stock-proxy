@@ -219,11 +219,16 @@ const server = http.createServer(async (req, res) => {
 
   } else if (path === '/finmind' && req.method === 'GET') {
     // FinMind API 轉發 + Server 端快取（3分鐘）
-    // 所有使用者共用同一份快取，大幅減少 API 呼叫次數
-    const cacheKey = parsed.query || '';
+    const rawQuery = req.url.includes('?') ? req.url.split('?')[1] : '';
+    const cacheKey = rawQuery;
     const now = Date.now();
+    if (!cacheKey) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 400, msg: 'missing query' }));
+      return;
+    }
     if (!finmindCache[cacheKey] || now - finmindCache[cacheKey].time > FINMIND_TTL) {
-      const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + cacheKey;
+      const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + rawQuery;
       try {
         const r = await fetchUrl(targetUrl);
         finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
