@@ -376,11 +376,18 @@ const server = http.createServer(async (req, res) => {
       const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + cleanQuery;
       try {
         const r = await fetchUrlWithAuth(targetUrl, token);
-        finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
         try {
           const j = JSON.parse(r.body);
-          console.log(`[FinMind] status=${j.status} rows=${j.data?.length ?? 0} dataset=${qp.get('dataset')} id=${qp.get('data_id')}`);
-        } catch {}
+          const rows = j.data?.length ?? 0;
+          console.log(`[FinMind] status=${j.status} rows=${rows} dataset=${qp.get('dataset')} id=${qp.get('data_id')}`);
+          // 只快取有資料的結果，空 data 不快取（讓下次能重新查詢）
+          if (rows > 0) {
+            finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
+          }
+        } catch {
+          // JSON 解析失敗也不快取
+          finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
+        }
       } catch(e) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 502, error: e.message }));
