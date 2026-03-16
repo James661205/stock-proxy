@@ -243,6 +243,79 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok:false, error:e.message }));
     }
 
+  } else if (path === '/twse' && req.method === 'GET') {
+    // TWSE OpenAPI 專用路由：模擬完整瀏覽器 Header，繞過 WAF
+    const twseTarget = parsed.query.url || '';
+    if (!twseTarget || !twseTarget.includes('twse.com.tw')) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid url' }));
+      return;
+    }
+    const twseKey = twseTarget;
+    const nowT = Date.now();
+    // 盤中資料快取3分鐘，靜態資料快取10分鐘
+    const twseTTL = twseTarget.includes('STOCK_DAY_ALL') ? 5*60*1000 : 3*60*1000;
+    if (finmindCache[twseKey] && nowT - finmindCache[twseKey].time < twseTTL) {
+      res.writeHead(finmindCache[twseKey].status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
+      res.end(finmindCache[twseKey].body);
+      return;
+    }
+    try {
+      const p = urlMod.parse(twseTarget);
+      const twseReq = https.request({
+        hostname: p.hostname, port: 443, path: p.path, method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Referer': 'https://www.twse.com.tw/',
+          'Origin': 'https://www.twse.com.tw',
+          'Connection': 'keep-alive',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-site',
+        }
+      }, twseR => {
+        let d = '';
+        // 處理 gzip
+        let stream = twseR;
+        if (twseR.headers['content-encoding'] === 'gzip') {
+          const zlib = require('zlib');
+          stream = twseR.pipe(zlib.createGunzip());
+        }
+        stream.on('data', chunk => d += chunk);
+        stream.on('end', () => {
+          // 檢查是否為 HTML 錯誤頁（TWSE WAF）
+          if (d.trim().startsWith('<')) {
+            console.warn('[TWSE] WAF 攔截，回傳 HTML');
+            res.writeHead(403, { 'Content-Type': 'application/json', ...CORS });
+            res.end(JSON.stringify({ error: 'TWSE blocked', status: 403 }));
+            return;
+          }
+          if (twseR.statusCode === 200) {
+            finmindCache[twseKey] = { body: d, status: 200, time: nowT };
+          }
+          res.writeHead(twseR.statusCode, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
+          res.end(d);
+          console.log(`[TWSE] ${p.path.split('?')[0].split('/').pop()} → ${twseR.statusCode} (${d.length}b)`);
+        });
+      });
+      twseReq.on('error', e => {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      });
+      twseReq.setTimeout(8000, () => {
+        twseReq.destroy();
+        res.writeHead(504, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'TWSE timeout' }));
+      });
+      twseReq.end();
+    } catch(e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+
   } else if (path === '/yahoo' && req.method === 'GET') {
     // Yahoo Finance / TWSE OpenAPI 轉發（解決 CORS 問題）
     const targetUrl = parsed.query.url || '';
