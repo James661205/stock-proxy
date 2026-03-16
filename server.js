@@ -12,7 +12,31 @@ const PORT = process.env.PORT || 3001;
 
 // FinMind 快取（server 端，所有使用者共用，減少 API 呼叫）
 const finmindCache = {};
-const FINMIND_TTL  = 3 * 60 * 1000; // 3 分鐘快取
+// FinMind Token（免費版，600次/小時上限）
+const FINMIND_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJkYXRlIjoiMjAyNi0wMy0xNiAxNjowNjowOCIsInVzZXJfaWQiOiJKYW1lcyIsImVtYWlsIjoiamFtZXNAc3AzYy5jb20udHciLCJpcCI6IjM2LjIzOS4xLjE4MiJ9.AeaPaksif3unSJs4h83WVDJ41pdI60bSlCPKuwrvxFQ';
+
+// FinMind 用量追蹤（600次/小時）
+const finmindUsage = { count: 0, resetAt: Date.now() + 3600000 };
+function trackFinMind() {
+  if (Date.now() > finmindUsage.resetAt) {
+    finmindUsage.count = 0;
+    finmindUsage.resetAt = Date.now() + 3600000;
+  }
+  finmindUsage.count++;
+  if (finmindUsage.count % 20 === 0)
+    console.log(`[FinMind] 本小時已用 ${finmindUsage.count}/600 次`);
+  return finmindUsage.count <= 590;
+}
+
+// FinMind TTL：財務季報快取6小時，比率1小時，其他10分鐘
+function getFinMindTTL(dataset) {
+  if (!dataset) return 10 * 60 * 1000;
+  if (/FinancialStatements|BalanceSheet|IncomeStatement|CashFlow/.test(dataset))
+    return 6 * 60 * 60 * 1000;
+  if (/FinancialRatios|Dividend|MonthRevenue/.test(dataset))
+    return 60 * 60 * 1000;
+  return 10 * 60 * 1000;
+}
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -57,6 +81,28 @@ function fetchUrl(targetUrl, redirectCount) {
     });
     req.on('error', reject);
     req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.end();
+  });
+}
+
+// FinMind 專用：帶 Authorization: Bearer token
+function fetchUrlWithAuth(targetUrl, token) {
+  return new Promise((resolve, reject) => {
+    const p = urlMod.parse(targetUrl);
+    const headers = {
+      'User-Agent': 'Mozilla/5.0',
+      'Accept': 'application/json',
+    };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const req = https.request({
+      hostname: p.hostname, port: 443, path: p.path, method: 'GET', headers
+    }, res => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => resolve({ status: res.statusCode, body: d }));
+    });
+    req.on('error', reject);
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('FinMind timeout')); });
     req.end();
   });
 }
@@ -219,22 +265,40 @@ const server = http.createServer(async (req, res) => {
 
   } else if (path === '/finmind' && req.method === 'GET') {
     // FinMind API 轉發 + Server 端快取（3分鐘）
+    // FinMind v4 需要 Authorization: Bearer {token}，不接受 query string token
     const rawQuery = req.url.includes('?') ? req.url.split('?')[1] : '';
-    const cacheKey = rawQuery;
-    const now = Date.now();
-    if (!cacheKey) {
+    if (!rawQuery) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ status: 400, msg: 'missing query' }));
       return;
     }
-    if (!finmindCache[cacheKey] || now - finmindCache[cacheKey].time > FINMIND_TTL) {
-      const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + rawQuery;
+    // 從 query string 取出 token，其餘參數送給 FinMind
+    const qp    = new urlMod.URLSearchParams(rawQuery);
+    const token = qp.get('token') || qp.get('api_token') || FINMIND_TOKEN;
+    qp.delete('token');
+    qp.delete('api_token');
+    const cleanQuery = qp.toString();
+    const cacheKey   = cleanQuery;
+    const now = Date.now();
+
+    const dataset = qp.get('dataset') || '';
+    if (!trackFinMind()) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 429, msg: 'FinMind 每小時 600 次上限已達，請稍後再試' }));
+      return;
+    }
+    if (!finmindCache[cacheKey] || now - finmindCache[cacheKey].time > getFinMindTTL(dataset)) {
+      const targetUrl = 'https://api.finmindtrade.com/api/v4/data?' + cleanQuery;
       try {
-        const r = await fetchUrl(targetUrl);
+        const r = await fetchUrlWithAuth(targetUrl, token);
         finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
+        try {
+          const j = JSON.parse(r.body);
+          console.log(`[FinMind] status=${j.status} rows=${j.data?.length ?? 0} dataset=${qp.get('dataset')} id=${qp.get('data_id')}`);
+        } catch {}
       } catch(e) {
         res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 500, error: e.message }));
+        res.end(JSON.stringify({ status: 502, error: e.message }));
         return;
       }
     }
