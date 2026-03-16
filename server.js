@@ -380,12 +380,11 @@ const server = http.createServer(async (req, res) => {
           const j = JSON.parse(r.body);
           const rows = j.data?.length ?? 0;
           console.log(`[FinMind] status=${j.status} rows=${rows} dataset=${qp.get('dataset')} id=${qp.get('data_id')}`);
-          // 只快取有資料的結果，空 data 不快取（讓下次能重新查詢）
-          if (rows > 0) {
-            finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
-          }
+          // 有資料：正常 TTL 快取；空資料：短暫快取 30 秒（避免重複打 API，但很快就會重試）
+          const ttl = rows > 0 ? getFinMindTTL(dataset) : 30000;
+          finmindCache[cacheKey] = { body: r.body, status: r.status, time: now - (getFinMindTTL(dataset) - ttl) };
         } catch {
-          // JSON 解析失敗也不快取
+          // JSON 解析失敗：短暫快取
           finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
         }
       } catch(e) {
