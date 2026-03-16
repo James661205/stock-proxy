@@ -251,26 +251,19 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: 'invalid url' }));
       return;
     }
-    // TWSE BWIBBU_ALL：server 端快取1小時（全市場資料量大，避免重複打）
-    const isBWIBBU = targetUrl.includes('BWIBBU_ALL');
+    // Yahoo Finance / TWSE 轉發，5分鐘快取
     const yahooKey = targetUrl;
-    const yahooTTL = isBWIBBU ? 60 * 60 * 1000 : 5 * 60 * 1000; // BWIBBU:1hr, 其他:5min
     const nowY = Date.now();
-    if (finmindCache[yahooKey] && nowY - finmindCache[yahooKey].time < yahooTTL) {
+    if (finmindCache[yahooKey] && nowY - finmindCache[yahooKey].time < 5 * 60 * 1000) {
       res.writeHead(finmindCache[yahooKey].status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
       res.end(finmindCache[yahooKey].body);
       return;
     }
     try {
       const r = await fetchUrl(targetUrl);
-      if (r.status === 200) {
-        finmindCache[yahooKey] = { body: r.body, status: r.status, time: nowY };
-      }
+      if (r.status === 200) finmindCache[yahooKey] = { body: r.body, status: r.status, time: nowY };
       res.writeHead(r.status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
       res.end(r.body);
-      if (isBWIBBU) {
-        try { console.log(`[TWSE BWIBBU_ALL] 快取更新，${JSON.parse(r.body).length} 筆`); } catch {}
-      }
     } catch(e) {
       res.writeHead(502, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: e.message }));
