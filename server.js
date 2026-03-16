@@ -246,7 +246,7 @@ const server = http.createServer(async (req, res) => {
   } else if (path === '/yahoo' && req.method === 'GET') {
     // Yahoo Finance API 轉發（解決 Safari CORS 問題）
     const targetUrl = parsed.query.url || '';
-    if (!targetUrl || !targetUrl.includes('yahoo.com')) {
+    if (!targetUrl || (!targetUrl.includes('yahoo.com') && !targetUrl.includes('twse.com.tw'))) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'invalid url' }));
       return;
