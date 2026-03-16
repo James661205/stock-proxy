@@ -30,12 +30,18 @@ function trackFinMind() {
 
 // FinMind TTL：財務季報快取6小時，比率1小時，其他10分鐘
 function getFinMindTTL(dataset) {
-  if (!dataset) return 10 * 60 * 1000;
+  if (!dataset) return 3 * 60 * 1000;
+  // 季報/資產負債：6小時快取
   if (/FinancialStatements|BalanceSheet|IncomeStatement|CashFlow/.test(dataset))
     return 6 * 60 * 60 * 1000;
-  if (/FinancialRatios|Dividend|MonthRevenue/.test(dataset))
+  // 年度指標/月營收：1小時快取
+  if (/FinancialRatios|Dividend|MonthRevenue|TaiwanStockPER/.test(dataset))
     return 60 * 60 * 1000;
-  return 10 * 60 * 1000;
+  // 期貨日資料：3分鐘快取（配合 block05 刷新週期）
+  if (/TaiwanFuturesDaily|TaiwanOptionDaily/.test(dataset))
+    return 3 * 60 * 1000;
+  // 其他資料：3分鐘快取（預設）
+  return 3 * 60 * 1000;
 }
 
 const CORS = {
@@ -380,9 +386,17 @@ const server = http.createServer(async (req, res) => {
           const j = JSON.parse(r.body);
           const rows = j.data?.length ?? 0;
           console.log(`[FinMind] status=${j.status} rows=${rows} dataset=${qp.get('dataset')} id=${qp.get('data_id')}`);
-          // 有資料：正常 TTL 快取；空資料：短暫快取 30 秒（避免重複打 API，但很快就會重試）
-          const ttl = rows > 0 ? getFinMindTTL(dataset) : 30000;
-          finmindCache[cacheKey] = { body: r.body, status: r.status, time: now - (getFinMindTTL(dataset) - ttl) };
+          if (j.status === 402) {
+            // 超過配額：快取 5 分鐘，避免持續打 FinMind
+            console.warn('[FinMind] 402 超過配額，等到下個整點重置');
+            finmindCache[cacheKey] = { body: r.body, status: 200, time: now - getFinMindTTL(dataset) + 300000 };
+          } else if (rows > 0) {
+            // 有資料：正常 TTL 快取
+            finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
+          } else {
+            // 空資料：快取 30 秒後重試
+            finmindCache[cacheKey] = { body: r.body, status: r.status, time: now - getFinMindTTL(dataset) + 30000 };
+          }
         } catch {
           // JSON 解析失敗：短暫快取
           finmindCache[cacheKey] = { body: r.body, status: r.status, time: now };
