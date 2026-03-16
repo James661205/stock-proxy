@@ -121,11 +121,12 @@ function decodeHtml(str) {
 }
 
 function getTag(xml, tag) {
-  const val = (
+  const raw = (
     xml.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`))?.[1] ||
     xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`))?.[1] || ''
   ).replace(/<[^>]+>/g,'').trim();
-  return decodeHtml(val);
+  // decodeHtml 後再 strip 一次（避免 &lt;li&gt; 轉成 <li> 破壞前端排版）
+  return decodeHtml(raw).replace(/<[^>]+>/g,'').replace(/\s+/g,' ').trim();
 }
 
 function parseRSS(xml, source) {
