@@ -277,20 +277,22 @@ const server = http.createServer(async (req, res) => {
           'Sec-Fetch-Site': 'same-site',
         }
       }, twseR => {
-        let d = '';
-        // 處理 gzip
+        const chunks = [];
+        // 處理 gzip/deflate 壓縮
         let stream = twseR;
-        if (twseR.headers['content-encoding'] === 'gzip') {
+        const enc = twseR.headers['content-encoding'];
+        if (enc === 'gzip' || enc === 'deflate') {
           const zlib = require('zlib');
-          stream = twseR.pipe(zlib.createGunzip());
+          stream = twseR.pipe(enc === 'gzip' ? zlib.createGunzip() : zlib.createInflate());
         }
-        stream.on('data', chunk => d += chunk);
+        stream.on('data', chunk => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
         stream.on('end', () => {
-          // 檢查是否為 HTML 錯誤頁（TWSE WAF）
+          const d = Buffer.concat(chunks).toString('utf-8');
+          // 檢查是否為 HTML 錯誤頁（TWSE WAF 攔截）
           if (d.trim().startsWith('<')) {
-            console.warn('[TWSE] WAF 攔截，回傳 HTML');
+            console.warn('[TWSE] WAF 攔截！回傳 HTML');
             res.writeHead(403, { 'Content-Type': 'application/json', ...CORS });
-            res.end(JSON.stringify({ error: 'TWSE blocked', status: 403 }));
+            res.end(JSON.stringify({ error: 'TWSE_BLOCKED', status: 403 }));
             return;
           }
           if (twseR.statusCode === 200) {
@@ -298,7 +300,11 @@ const server = http.createServer(async (req, res) => {
           }
           res.writeHead(twseR.statusCode, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
           res.end(d);
-          console.log(`[TWSE] ${p.path.split('?')[0].split('/').pop()} → ${twseR.statusCode} (${d.length}b)`);
+          try {
+            const j = JSON.parse(d);
+            const rows = Array.isArray(j) ? j.length : '?';
+            console.log(`[TWSE] ${p.path.split('/').pop().split('?')[0]} → ${twseR.statusCode} (${rows} rows)`);
+          } catch { console.log(`[TWSE] ${p.path.split('/').pop()} → ${twseR.statusCode}`); }
         });
       });
       twseReq.on('error', e => {
