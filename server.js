@@ -416,6 +416,51 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type':'application/json' });
     res.end(JSON.stringify({ ok:true, time:new Date().toISOString() }));
 
+
+  } else if (path === '/claude' && req.method === 'POST') {
+    // Claude AI API 轉發（server 端帶 API Key，前端不暴露）
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', async () => {
+      try {
+        const CLAUDE_KEY = process.env.ANTHROPIC_API_KEY || '';
+        if (!CLAUDE_KEY) {
+          res.writeHead(503, { 'Content-Type': 'application/json', ...CORS });
+          res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY not set on server' }));
+          return;
+        }
+        const parsed_body = JSON.parse(body);
+        const claude_res = await new Promise((resolve, reject) => {
+          const post_data = Buffer.from(JSON.stringify(parsed_body));
+          const req2 = https.request({
+            hostname: 'api.anthropic.com',
+            port: 443,
+            path: '/v1/messages',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': post_data.length,
+              'x-api-key': CLAUDE_KEY,
+              'anthropic-version': '2023-06-01',
+            }
+          }, r2 => {
+            let d = '';
+            r2.on('data', c => d += c);
+            r2.on('end', () => resolve({ status: r2.statusCode, body: d }));
+          });
+          req2.on('error', reject);
+          req2.setTimeout(30000, () => { req2.destroy(); reject(new Error('Claude API timeout')); });
+          req2.write(post_data);
+          req2.end();
+        });
+        res.writeHead(claude_res.status, { 'Content-Type': 'application/json; charset=utf-8', ...CORS });
+        res.end(claude_res.body);
+      } catch(e) {
+        res.writeHead(502, { 'Content-Type': 'application/json', ...CORS });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+
   } else {
     res.writeHead(404); res.end('Not found');
   }
